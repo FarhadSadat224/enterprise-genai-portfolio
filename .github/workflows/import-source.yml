@@ -1,1 +1,36 @@
-
+name: Import uploaded source tree
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and unpack reviewed source
+        shell: python
+        run: |
+          import hashlib
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile
+          archive = Path('enterprise_genai_portfolio.zip')
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == '57ca55a95fa8de496879172550bc38161205ab60775d96757420ad2dcc8e96e3'
+          with ZipFile(archive) as z:
+              for entry in z.infolist():
+                  parts = PurePosixPath(entry.filename).parts
+                  assert parts[0] == 'enterprise_genai_portfolio'
+                  assert '..' not in parts
+                  if entry.is_dir() or len(parts) < 2 or parts[1] == '.github':
+                      continue
+                  target = Path(*parts[1:])
+                  assert not target.is_absolute() and '.git' not in target.parts
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(z.read(entry))
+      - name: Commit source files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .
+          git diff --cached --quiet || git commit -m 'Import verified enterprise GenAI source tree'
+          git push origin HEAD:main
